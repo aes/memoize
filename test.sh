@@ -53,4 +53,12 @@ check "replay stderr" "$err" "err a"
 check "replay rc" "$rc" 3
 check "replay does not rerun" "$(ncalls)" 1
 
+check "args keep boundaries" "$(memoize printf '%s|' 'a b' c)" "a b|c|"
+check "boundaries are part of key" "$(memoize printf '%s|' a 'b c')" "a|b c|"
+check "empty args survive" "$(memoize printf '[%s]' '' x)" "[][x]"
+check "backslashes are part of key" \
+    "$(memoize printf '%s' 'a\nb'; memoize printf '%s' 'a
+b')" 'a\nba
+b'
+
 [ "$failures" -eq 0 ]

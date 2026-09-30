@@ -1,5 +1,5 @@
 memoize() {
-    local _ cache key exists timecheck
+    local cache key exists timecheck
     cache="${XDG_CACHE_HOME:-$HOME/.cache}/memoize"
     if [ ! -d "${cache}" ]; then
         mkdir -p "${cache}"
@@ -9,7 +9,7 @@ memoize() {
         case "$1" in
             "-d")
                 shift
-                echo -n "$*" | sha1sum | read key _
+                key=$(_memoize_key "$@") || return 1
                 rm -f "${cache}/${key}".{rc,out,err}
                 return 0
                 ;;
@@ -25,7 +25,7 @@ memoize() {
         esac
     done
 
-    echo -n "$*" | sha1sum | read key _
+    key=$(_memoize_key "$@") || return 1
     local base="${cache}/${key}"
 
     if [ -f "${base}.rc" ]; then
@@ -53,7 +53,7 @@ memoize() {
         return $rc
     else
         # capture
-        $* \
+        "$@" \
              2> >(tee "${base}.err" 1>&2) \
              1> >(tee "${base}.out")
 
@@ -61,6 +61,14 @@ memoize() {
         echo "$rc" > "${base}.rc"
         return $rc
     fi
+}
+
+# NUL-separating the arguments keeps `a 'b c'` and `'a b' c` apart, and
+# printf (unlike zsh's echo) leaves backslashes alone.
+_memoize_key() {
+    local sum
+    sum=$(printf '%s\0' "$@" | sha1sum) || return 1
+    printf '%s\n' "${sum%% *}"
 }
 
 # Local Variables:

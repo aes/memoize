@@ -24,9 +24,10 @@ Run `./test.sh` to run the tests.
 
 ## Technical details
 
-The cache is keyed on the sha1 of echo "$*" of the line, so there's no logic
-to try to understand anything. Shell lexing will ignore whitespace between
-arguments, but that's it.
+The cache is keyed on the sha1 of the arguments, each terminated by a NUL
+byte, so there's no logic to try to understand anything. Whitespace between
+arguments is ignored by the shell, but argument boundaries count: `a 'b c'`
+and `'a b' c` are different keys.
 
 The results are kept in files named _key_.rc, _key_.out, and _key_.err in
 `$XDG_CACHE_HOME/memoize`, or if `XDG_CACHE_HOME` is not set
