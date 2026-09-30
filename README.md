@@ -19,6 +19,11 @@ To clear the cache for a command, add the `-d` flag before it:
 
     memoize -d bash -c 'sleep 3; echo moo'
 
+To only replay results younger than some age, use `-t AGE`, where AGE is a
+number with an optional unit `s`, `m`, `h` or `d` (default minutes):
+
+    memoize -t 90s bash -c 'sleep 3; echo moo'
+
 Use `--` to end the options if the command itself starts with `-`.
 
 Run `./test.sh` to run the tests.

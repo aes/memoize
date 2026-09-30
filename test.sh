@@ -78,12 +78,19 @@ check "signalled not cached" "$(entries)" "$before"
 
 : >"$calls"
 memoize counted t >/dev/null 2>&1
+memoize -t 5m counted t >/dev/null 2>&1
+check "-t fresh replays" "$(ncalls)" 1
+touch -d '-10 minutes' "$XDG_CACHE_HOME/memoize/$(_memoize_key counted t).rc"
+memoize -t 5m counted t >/dev/null 2>&1
+check "-t stale reruns" "$(ncalls)" 2
 memoize -t 5 -d counted t
 memoize counted t >/dev/null 2>&1
-check "-t before -d still deletes" "$(ncalls)" 2
+check "-t before -d still deletes" "$(ncalls)" 3
 
 memoize 2>/dev/null
 check "no command is usage error" "$?" 2
+memoize -t 5x true 2>/dev/null
+check "bad age is usage error" "$?" 2
 check "-- ends options" "$(memoize -- printf '%s' -d)" "-d"
 
 [ "$failures" -eq 0 ]

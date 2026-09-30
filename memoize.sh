@@ -15,7 +15,7 @@ memoize() {
                     _memoize_usage
                     return 2
                 fi
-                maxage="$2"
+                maxage=$(_memoize_seconds "$2") || return 2
                 shift 2
                 ;;
             --)
@@ -54,18 +54,38 @@ _memoize_usage() {
     echo "usage: memoize [-d] [-t AGE] [--] COMMAND [ARG...]" >&2
 }
 
+# Converts an age like 90s, 5m, 2h or 1d to seconds; a bare number is minutes.
+_memoize_seconds() {
+    local n="${1%[smhd]}"
+    local unit="${1#"$n"}"
+    case "$n" in
+        '' | *[!0-9]*)
+            echo "memoize: bad age: $1" >&2
+            return 1
+            ;;
+    esac
+    # 10# stops bash from reading a leading zero as octal.
+    n=$((10#$n))
+    case "$unit" in
+        s) echo "$n" ;;
+        '' | m) echo $((n * 60)) ;;
+        h) echo $((n * 3600)) ;;
+        d) echo $((n * 86400)) ;;
+    esac
+}
+
 # Prints the cache directory, creating it if needed.
 _memoize_cache_dir() {
     local dir="${XDG_CACHE_HOME:-$HOME/.cache}/memoize"
     mkdir -p "$dir" && printf '%s\n' "$dir"
 }
 
-# Succeeds if the entry at $1 exists and, when $2 is set, is less than $2
-# minutes old.
+# Succeeds if the entry at $1 exists and, when $2 is set, is at most $2
+# seconds old.
 _memoize_fresh() {
     [ -f "$1.rc" ] || return 1
     [ -n "$2" ] || return 0
-    [ -n "$(find "$1.rc" -mmin "-$2")" ]
+    [ -n "$(find "$1.rc" -newermt "@$(($(date +%s) - $2))")" ]
 }
 
 _memoize_replay() {
