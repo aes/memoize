@@ -1,12 +1,15 @@
-# shellcheck shell=bash
-# Source this file from bash or zsh.
+# shellcheck shell=sh
+# Source this file from any POSIX shell.
+#
+# Functions that need variables of their own run in a subshell, ( ... ),
+# since POSIX has no `local`.
 
 # memoize [-d] [-t AGE] [--] COMMAND [ARG...]
 #
 # Runs COMMAND, caching its stdout, stderr and exit code. Later runs of the
 # same command line replay the cache instead of running it. See README.md.
-memoize() {
-    local delete='' maxage='' cache key base
+memoize() (
+    delete='' maxage=''
     while [ $# -gt 0 ]; do
         case "$1" in
             -d)
@@ -51,16 +54,16 @@ memoize() {
     else
         _memoize_capture "$base" "$@"
     fi
-}
+)
 
 _memoize_usage() {
     echo "usage: memoize [-d] [-t AGE] [--] COMMAND [ARG...]" >&2
 }
 
 # Converts an age like 90s, 5m, 2h or 1d to seconds; a bare number is minutes.
-_memoize_seconds() {
-    local n="${1%[smhd]}"
-    local unit="${1#"$n"}"
+_memoize_seconds() (
+    n="${1%[smhd]}"
+    unit="${1#"$n"}"
     case "$n" in
         '' | *[!0-9]*)
             echo "memoize: bad age: $1" >&2
@@ -76,13 +79,13 @@ _memoize_seconds() {
         h) echo $((n * 3600)) ;;
         d) echo $((n * 86400)) ;;
     esac
-}
+)
 
 # Prints the cache directory, creating it if needed.
-_memoize_cache_dir() {
-    local dir="${XDG_CACHE_HOME:-$HOME/.cache}/memoize"
+_memoize_cache_dir() (
+    dir="${XDG_CACHE_HOME:-$HOME/.cache}/memoize"
     mkdir -p "$dir" && printf '%s\n' "$dir"
-}
+)
 
 # Succeeds if the entry at $1 exists and, when $2 is set, is at most $2
 # seconds old.
@@ -92,8 +95,7 @@ _memoize_fresh() {
     [ -n "$(find "$1.rc" -newermt "@$(($(date +%s) - $2))")" ]
 }
 
-_memoize_replay() {
-    local rc
+_memoize_replay() (
     rc=$(cat "$1.rc") || return 1
     # stdout and stderr are replayed concurrently so a reader consuming both
     # in lockstep can't deadlock. The subshell waits for both before we
@@ -104,12 +106,12 @@ _memoize_replay() {
         wait
     )
     return "$rc"
-}
+)
 
 # Runs the command into a scratch directory and only moves the result into
 # the cache if the run was one worth replaying.
-_memoize_capture() {
-    local base="$1" tmp rc
+_memoize_capture() (
+    base="$1"
     shift
     tmp=$(mktemp -d "${base}.tmp.XXXXXX") || return 1
     _memoize_tee "$tmp" "$@"
@@ -119,14 +121,14 @@ _memoize_capture() {
     fi
     rm -rf "$tmp"
     return "${rc:-1}"
-}
+)
 
 # Runs the command with stdout and stderr each teed into $1, and its exit
 # code written to $1/rc. Plain pipelines (not >(...)) so both tees have
 # finished when this returns. The nesting keeps each redirection of fd 1 on
 # its own level; zsh's MULTIOS would otherwise send stdout into both.
-_memoize_tee() {
-    local tmp="$1"
+_memoize_tee() (
+    tmp="$1"
     shift
     {
         {
@@ -136,7 +138,7 @@ _memoize_tee() {
             } 1>&3
         } 2>&1 | tee "$tmp/err" >&2 3>&-
     } 3>&1 | tee "$tmp/out"
-}
+)
 
 # Rejects runs that didn't finish (no rc), were killed by a signal (>128), or
 # never started (126: not executable, 127: not found).
@@ -158,11 +160,10 @@ _memoize_commit() {
 
 # NUL-separating the arguments keeps `a 'b c'` and `'a b' c` apart, and
 # printf (unlike zsh's echo) leaves backslashes alone.
-_memoize_key() {
-    local sum
+_memoize_key() (
     sum=$(printf '%s\0' "$@" | sha1sum) || return 1
     printf '%s\n' "${sum%% *}"
-}
+)
 
 # Local Variables:
 # mode: shell-script
