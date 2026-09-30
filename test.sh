@@ -83,7 +83,8 @@ check "signalled not cached" "$(entries)" "$before"
 memoize counted t >/dev/null 2>&1
 memoize -t 5m counted t >/dev/null 2>&1
 check "-t fresh replays" "$(ncalls)" 1
-touch -d '-10 minutes' "$XDG_CACHE_HOME/memoize/$(_memoize_key counted t).rc"
+printf '3\n%s\n' "$(($(date +%s) - 600))" \
+    >"$XDG_CACHE_HOME/memoize/$(_memoize_key counted t).rc"
 memoize -t 5m counted t >/dev/null 2>&1
 check "-t stale reruns" "$(ncalls)" 2
 memoize -t 5 -d counted t

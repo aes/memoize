@@ -87,16 +87,20 @@ _memoize_cache_dir() (
     mkdir -p "$dir" && printf '%s\n' "$dir"
 )
 
-# Succeeds if the entry at $1 exists and, when $2 is set, is at most $2
-# seconds old.
-_memoize_fresh() {
+# Succeeds if the entry at $1 exists and, when $2 is set, was captured at
+# most $2 seconds ago.
+_memoize_fresh() (
     [ -f "$1.rc" ] || return 1
     [ -n "$2" ] || return 0
-    [ -n "$(find "$1.rc" -newermt "@$(($(date +%s) - $2))")" ]
-}
+    { read -r _ && read -r captured; } <"$1.rc" || return 1
+    case "$captured" in
+        '' | *[!0-9]*) return 1 ;;
+    esac
+    [ $(($(date +%s) - captured)) -le "$2" ]
+)
 
 _memoize_replay() (
-    rc=$(cat "$1.rc") || return 1
+    read -r rc <"$1.rc" || return 1
     # stdout and stderr are replayed concurrently so a reader consuming both
     # in lockstep can't deadlock. The subshell waits for both before we
     # return, without touching the caller's jobs or printing job notices.
@@ -115,7 +119,8 @@ _memoize_capture() (
     shift
     tmp=$(mktemp -d "${base}.tmp.XXXXXX") || return 1
     _memoize_tee "$tmp" "$@"
-    rc=$(cat "$tmp/rc" 2>/dev/null)
+    rc=''
+    read -r rc 2>/dev/null <"$tmp/rc"
     if _memoize_cacheable "$rc"; then
         _memoize_commit "$tmp" "$base"
     fi
@@ -124,7 +129,7 @@ _memoize_capture() (
 )
 
 # Runs the command with stdout and stderr each teed into $1, and its exit
-# code written to $1/rc. Plain pipelines (not >(...)) so both tees have
+# code and the capture time (epoch seconds) written to $1/rc. Plain pipelines (not >(...)) so both tees have
 # finished when this returns. The nesting keeps each redirection of fd 1 on
 # its own level; zsh's MULTIOS would otherwise send stdout into both.
 _memoize_tee() (
@@ -134,7 +139,7 @@ _memoize_tee() (
         {
             {
                 "$@" 3>&-
-                printf '%s\n' "$?" >"$tmp/rc"
+                printf '%s\n%s\n' "$?" "$(date +%s)" >"$tmp/rc"
             } 1>&3
         } 2>&1 | tee "$tmp/err" >&2 3>&-
     } 3>&1 | tee "$tmp/out"

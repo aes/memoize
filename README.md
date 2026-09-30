@@ -42,7 +42,9 @@ could not be found or run (126, 127), are not cached.
 
 The results are kept in files named _key_.rc, _key_.out, and _key_.err in
 `$XDG_CACHE_HOME/memoize`, or if `XDG_CACHE_HOME` is not set
-`~/.cache/memoize`.
+`~/.cache/memoize`. The .rc file holds the exit code and, on its second
+line, the capture time in seconds since the epoch, which is what `-t`
+compares against.
 
 A run is written to a `_key_.tmp.*` directory first and moved into place
 once it's done, so a half-finished run is never replayed. It's ok to remove
