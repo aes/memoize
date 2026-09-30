@@ -1,5 +1,5 @@
 #!/bin/sh
-# Verify: shellcheck, then the test suite under both bash and zsh.
+# Verify: shellcheck, then the test suite under each supported shell.
 #
 #   ./test.sh            run everything
 #   ./test.sh --in SHELL run the suite in the current shell (internal)
@@ -9,9 +9,11 @@ here=$(cd "$(dirname "$0")" && pwd)
 if [ "${1:-}" != --in ]; then
     shellcheck "$here/memoize.sh" "$here/test.sh" || exit 1
     status=0
-    for sh in bash zsh; do
+    for sh in bash zsh dash 'busybox sh'; do
         echo "== $sh"
-        "$sh" "$here/test.sh" --in "$sh" || status=1
+        # Unquoted so 'busybox sh' splits into command and applet.
+        # shellcheck disable=SC2086
+        $sh "$here/test.sh" --in "$sh" || status=1
     done
     exit "$status"
 fi
@@ -92,6 +94,7 @@ memoize 2>/dev/null
 check "no command is usage error" "$?" 2
 memoize -t 5x true 2>/dev/null
 check "bad age is usage error" "$?" 2
+check "leading zero age is decimal" "$(_memoize_seconds 010)" 600
 check "-- ends options" "$(memoize -- printf '%s' -d)" "-d"
 
 [ "$failures" -eq 0 ]

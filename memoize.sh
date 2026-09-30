@@ -67,8 +67,9 @@ _memoize_seconds() {
             return 1
             ;;
     esac
-    # 10# stops bash from reading a leading zero as octal.
-    n=$((10#$n))
+    # Leading zeros would make shells read the number as octal.
+    n=${n#"${n%%[!0]*}"}
+    n=${n:-0}
     case "$unit" in
         s) echo "$n" ;;
         '' | m) echo $((n * 60)) ;;
