@@ -19,6 +19,8 @@ To clear the cache, add the `-d` flag before anything else:
 
     memoize -d bash -c 'sleep 3; echo moo'
 
+Run `./test.sh` to run the tests.
+
 
 ## Technical details
 
