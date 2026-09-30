@@ -61,4 +61,9 @@ check "backslashes are part of key" \
 b')" 'a\nba
 b'
 
+memoize seq 100000 >/dev/null
+check "output complete on return" \
+    "$(wc -l <"$XDG_CACHE_HOME/memoize/$(_memoize_key seq 100000).out" | tr -d ' ')" \
+    100000
+
 [ "$failures" -eq 0 ]
