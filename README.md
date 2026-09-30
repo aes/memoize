@@ -15,9 +15,11 @@ To replay them, just re-run the same command:
 
     memoize bash -c 'sleep 3; echo moo'
 
-To clear the cache, add the `-d` flag before anything else:
+To clear the cache for a command, add the `-d` flag before it:
 
     memoize -d bash -c 'sleep 3; echo moo'
+
+Use `--` to end the options if the command itself starts with `-`.
 
 Run `./test.sh` to run the tests.
 

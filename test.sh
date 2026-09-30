@@ -76,4 +76,14 @@ check "not-found not cached" "$(entries)" "$before"
 memoize sh -c 'kill -TERM $$'
 check "signalled not cached" "$(entries)" "$before"
 
+: >"$calls"
+memoize counted t >/dev/null 2>&1
+memoize -t 5 -d counted t
+memoize counted t >/dev/null 2>&1
+check "-t before -d still deletes" "$(ncalls)" 2
+
+memoize 2>/dev/null
+check "no command is usage error" "$?" 2
+check "-- ends options" "$(memoize -- printf '%s' -d)" "-d"
+
 [ "$failures" -eq 0 ]

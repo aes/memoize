@@ -1,50 +1,71 @@
+# memoize [-d] [-t AGE] [--] COMMAND [ARG...]
+#
+# Runs COMMAND, caching its stdout, stderr and exit code. Later runs of the
+# same command line replay the cache instead of running it. See README.md.
 memoize() {
-    local cache key exists timecheck
-    cache="${XDG_CACHE_HOME:-$HOME/.cache}/memoize"
-    if [ ! -d "${cache}" ]; then
-        mkdir -p "${cache}"
-    fi
-
-    while [ -n "$1" ]; do
+    local delete='' maxage='' cache key base
+    while [ $# -gt 0 ]; do
         case "$1" in
-            "-d")
+            -d)
+                delete=1
                 shift
-                key=$(_memoize_key "$@") || return 1
-                rm -f "${cache}/${key}".{rc,out,err}
-                return 0
                 ;;
-            "-t")
-                shift
-                timecheck="$1"
+            -t)
+                if [ $# -lt 2 ]; then
+                    _memoize_usage
+                    return 2
+                fi
+                maxage="$2"
+                shift 2
+                ;;
+            --)
                 shift
                 break
+                ;;
+            -*)
+                echo "memoize: unknown option: $1" >&2
+                _memoize_usage
+                return 2
                 ;;
             *)
                 break
                 ;;
         esac
     done
-
-    key=$(_memoize_key "$@") || return 1
-    local base="${cache}/${key}"
-
-    if [ -f "${base}.rc" ]; then
-        if [[ "$timecheck" ]]; then
-            if find "${base}.rc" -mmin "-$timecheck" | grep . >&/dev/null; then
-                exists=1
-            else
-                exists=
-            fi
-        else
-            exists=1
-        fi
+    if [ $# -eq 0 ]; then
+        _memoize_usage
+        return 2
     fi
 
-    if [[ $exists ]]; then
+    cache=$(_memoize_cache_dir) || return 1
+    key=$(_memoize_key "$@") || return 1
+    base="${cache}/${key}"
+
+    if [ -n "$delete" ]; then
+        rm -f "${base}.rc" "${base}.out" "${base}.err"
+    elif _memoize_fresh "$base" "$maxage"; then
         _memoize_replay "$base"
     else
         _memoize_capture "$base" "$@"
     fi
+}
+
+_memoize_usage() {
+    echo "usage: memoize [-d] [-t AGE] [--] COMMAND [ARG...]" >&2
+}
+
+# Prints the cache directory, creating it if needed.
+_memoize_cache_dir() {
+    local dir="${XDG_CACHE_HOME:-$HOME/.cache}/memoize"
+    mkdir -p "$dir" && printf '%s\n' "$dir"
+}
+
+# Succeeds if the entry at $1 exists and, when $2 is set, is less than $2
+# minutes old.
+_memoize_fresh() {
+    [ -f "$1.rc" ] || return 1
+    [ -n "$2" ] || return 0
+    [ -n "$(find "$1.rc" -mmin "-$2")" ]
 }
 
 _memoize_replay() {
