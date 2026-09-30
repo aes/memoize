@@ -32,6 +32,10 @@ check() {
     fi
 }
 
+entries() {
+    find "$XDG_CACHE_HOME/memoize" -name '*.rc' | wc -l | tr -d ' '
+}
+
 ncalls() {
     wc -l <"$calls" | tr -d ' '
 }
@@ -65,5 +69,11 @@ memoize seq 100000 >/dev/null
 check "output complete on return" \
     "$(wc -l <"$XDG_CACHE_HOME/memoize/$(_memoize_key seq 100000).out" | tr -d ' ')" \
     100000
+
+before=$(entries)
+memoize no-such-command-xyz 2>/dev/null
+check "not-found not cached" "$(entries)" "$before"
+memoize sh -c 'kill -TERM $$'
+check "signalled not cached" "$(entries)" "$before"
 
 [ "$failures" -eq 0 ]

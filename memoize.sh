@@ -61,29 +61,54 @@ _memoize_replay() {
     return "$rc"
 }
 
+# Runs the command into a scratch directory and only moves the result into
+# the cache if the run was one worth replaying.
 _memoize_capture() {
-    local base="$1" rc
+    local base="$1" tmp rc
     shift
-    _memoize_tee "$base" "$@"
-    rc=$(cat "$base.rc")
-    return "$rc"
+    tmp=$(mktemp -d "${base}.tmp.XXXXXX") || return 1
+    _memoize_tee "$tmp" "$@"
+    rc=$(cat "$tmp/rc" 2>/dev/null)
+    if _memoize_cacheable "$rc"; then
+        _memoize_commit "$tmp" "$base"
+    fi
+    rm -rf "$tmp"
+    return "${rc:-1}"
 }
 
-# Runs the command with stdout and stderr each teed into the entry $1, and
-# its exit code written to $1.rc. Plain pipelines (not >(...)) so both tees
-# have finished when this returns. The nesting keeps each redirection of
-# fd 1 on its own level; zsh's MULTIOS would otherwise send stdout into both.
+# Runs the command with stdout and stderr each teed into $1, and its exit
+# code written to $1/rc. Plain pipelines (not >(...)) so both tees have
+# finished when this returns. The nesting keeps each redirection of fd 1 on
+# its own level; zsh's MULTIOS would otherwise send stdout into both.
 _memoize_tee() {
-    local base="$1"
+    local tmp="$1"
     shift
     {
         {
             {
                 "$@" 3>&-
-                printf '%s\n' "$?" >"$base.rc"
+                printf '%s\n' "$?" >"$tmp/rc"
             } 1>&3
-        } 2>&1 | tee "$base.err" >&2 3>&-
-    } 3>&1 | tee "$base.out"
+        } 2>&1 | tee "$tmp/err" >&2 3>&-
+    } 3>&1 | tee "$tmp/out"
+}
+
+# Rejects runs that didn't finish (no rc), were killed by a signal (>128), or
+# never started (126: not executable, 127: not found).
+_memoize_cacheable() {
+    case "$1" in
+        '' | 126 | 127) return 1 ;;
+    esac
+    [ "$1" -le 128 ]
+}
+
+# Moves the run in $1 into the cache entry $2. The rc file marks an entry as
+# complete, so it goes first and is replaced last.
+_memoize_commit() {
+    rm -f "$2.rc"
+    mv -f "$1/out" "$2.out" &&
+        mv -f "$1/err" "$2.err" &&
+        mv -f "$1/rc" "$2.rc"
 }
 
 # NUL-separating the arguments keeps `a 'b c'` and `'a b' c` apart, and
