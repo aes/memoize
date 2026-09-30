@@ -161,9 +161,24 @@ _memoize_commit() {
 # NUL-separating the arguments keeps `a 'b c'` and `'a b' c` apart, and
 # printf (unlike zsh's echo) leaves backslashes alone.
 _memoize_key() (
-    sum=$(printf '%s\0' "$@" | sha1sum) || return 1
+    sum=$(printf '%s\0' "$@" | _memoize_sha1) || return 1
     printf '%s\n' "${sum%% *}"
 )
+
+# Hashes stdin with whichever sha1 tool this system has; sha1sum is GNU,
+# shasum is what macOS ships.
+_memoize_sha1() {
+    if command -v sha1sum >/dev/null; then
+        sha1sum
+    elif command -v shasum >/dev/null; then
+        shasum -a 1
+    elif command -v openssl >/dev/null; then
+        openssl sha1 -r
+    else
+        echo "memoize: need sha1sum, shasum or openssl" >&2
+        return 1
+    fi
+}
 
 # Local Variables:
 # mode: shell-script

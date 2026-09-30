@@ -95,6 +95,18 @@ check "no command is usage error" "$?" 2
 memoize -t 5x true 2>/dev/null
 check "bad age is usage error" "$?" 2
 check "leading zero age is decimal" "$(_memoize_seconds 010)" 600
+want=$(_memoize_key a b)
+for tool in sha1sum shasum openssl; do
+    bin=$(command -v "$tool") || continue
+    mkdir "$XDG_CACHE_HOME/only-$tool"
+    ln -s "$bin" "$XDG_CACHE_HOME/only-$tool/"
+    check "same key via $tool" \
+        "$(PATH="$XDG_CACHE_HOME/only-$tool" _memoize_key a b)" "$want"
+done
+# Subshell: a PATH assignment before a function may outlive the call.
+(PATH="$XDG_CACHE_HOME" _memoize_key a b) 2>/dev/null
+check "no hash tool is an error" "$?" 1
+
 check "-- ends options" "$(memoize -- printf '%s' -d)" "-d"
 
 [ "$failures" -eq 0 ]
