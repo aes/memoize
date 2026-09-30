@@ -7,7 +7,7 @@ set -u
 here=$(cd "$(dirname "$0")" && pwd)
 
 if [ "${1:-}" != --in ]; then
-    shellcheck "$here/memoize.sh" "$here/test.sh" || exit 1
+    shellcheck "$here/memoize.sh" "$here/memoize" "$here/test.sh" || exit 1
     status=0
     for sh in bash zsh dash 'busybox sh'; do
         echo "== $sh"
@@ -109,5 +109,11 @@ done
 check "no hash tool is an error" "$?" 1
 
 check "-- ends options" "$(memoize -- printf '%s' -d)" "-d"
+
+"$here/memoize" sh -c 'exit 4'
+check "command form passes rc" "$?" 4
+ln -s "$here/memoize" "$XDG_CACHE_HOME/memo"
+check "command form works via symlink" \
+    "$("$XDG_CACHE_HOME/memo" printf '%s' via-link)" via-link
 
 [ "$failures" -eq 0 ]

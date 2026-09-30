@@ -26,8 +26,13 @@ number with an optional unit `s`, `m`, `h` or `d` (default minutes):
 
 Use `--` to end the options if the command itself starts with `-`.
 
-`memoize.sh` is meant to be sourced from any POSIX shell. Run `./test.sh` to
-shellcheck it and run the tests under bash, zsh, dash and busybox sh.
+`memoize.sh` is meant to be sourced from any POSIX shell, which defines
+the `memoize` function. Where sourcing isn't an option (other shells,
+scripts, `xargs`), put the `memoize` command on your `PATH`, e.g. by
+symlinking it into `~/bin`; it can't memoize shell functions or aliases.
+
+Run `./test.sh` to shellcheck and run the tests under bash, zsh, dash and
+busybox sh.
 
 
 ## Technical details
