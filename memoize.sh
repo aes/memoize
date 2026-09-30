@@ -1,3 +1,6 @@
+# shellcheck shell=bash
+# Source this file from bash or zsh.
+
 # memoize [-d] [-t AGE] [--] COMMAND [ARG...]
 #
 # Runs COMMAND, caching its stdout, stderr and exit code. Later runs of the

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Verify: the test suite under zsh.
+# Verify: shellcheck, then the test suite under both bash and zsh.
 #
 #   ./test.sh            run everything
 #   ./test.sh --in SHELL run the suite in the current shell (internal)
@@ -7,8 +7,9 @@ set -u
 here=$(cd "$(dirname "$0")" && pwd)
 
 if [ "${1:-}" != --in ]; then
+    shellcheck "$here/memoize.sh" "$here/test.sh" || exit 1
     status=0
-    for sh in zsh; do
+    for sh in bash zsh; do
         echo "== $sh"
         "$sh" "$here/test.sh" --in "$sh" || status=1
     done
