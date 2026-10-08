@@ -1,0 +1,18 @@
+#!/bin/sh
+# memoize as a command, for callers that can't source memoize.sh (other
+# shells, scripts, xargs). Unlike the sourced function, this can't memoize
+# the caller's shell functions or aliases.
+
+# Follow symlinks so memoize.sh is found next to the real file, e.g. when
+# this is linked into ~/bin.
+self=$0
+while [ -L "$self" ]; do
+    link=$(readlink "$self") || exit 1
+    case "$link" in
+        /*) self=$link ;;
+        *) self=$(dirname -- "$self")/$link ;;
+    esac
+done
+. "$(dirname -- "$self")/memoize.sh"
+
+memoize "$@"

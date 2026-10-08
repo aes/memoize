@@ -1,65 +1,187 @@
-memoize() {
-    local _ cache key exists timecheck
-    cache="${XDG_CACHE_HOME:-$HOME/.cache}/memoize"
-    if [ ! -d "${cache}" ]; then
-        mkdir -p "${cache}"
-    fi
+# shellcheck shell=sh
+# Source this file from any POSIX shell.
+#
+# Functions that need variables of their own run in a subshell, ( ... ),
+# since POSIX has no `local`.
 
-    while [ -n "$1" ]; do
+# memoize [-d] [-t AGE] [--] COMMAND [ARG...]
+#
+# Runs COMMAND, caching its stdout, stderr and exit code. Later runs of the
+# same command line replay the cache instead of running it. See README.md.
+memoize() (
+    delete='' maxage=''
+    while [ $# -gt 0 ]; do
         case "$1" in
-            "-d")
+            -d)
+                delete=1
                 shift
-                echo -n "$*" | sha1sum | read key _
-                rm -f "${cache}/${key}".{rc,out,err}
-                return 0
                 ;;
-            "-t")
-                shift
-                timecheck="$1"
+            -t)
+                if [ $# -lt 2 ]; then
+                    _memoize_usage
+                    return 2
+                fi
+                maxage=$(_memoize_seconds "$2") || return 2
+                shift 2
+                ;;
+            --)
                 shift
                 break
+                ;;
+            -*)
+                echo "memoize: unknown option: $1" >&2
+                _memoize_usage
+                return 2
                 ;;
             *)
                 break
                 ;;
         esac
     done
-
-    echo -n "$*" | sha1sum | read key _
-    local base="${cache}/${key}"
-
-    if [ -f "${base}.rc" ]; then
-        if [[ "$timecheck" ]]; then
-            if find "${base}.rc" -mmin "-$timecheck" | grep . >&/dev/null; then
-                exists=1
-            else
-                exists=
-            fi
-        else
-            exists=1
-        fi
+    if [ $# -eq 0 ]; then
+        _memoize_usage
+        return 2
     fi
 
-    if [[ $exists ]]; then
-        # replay
+    cache=$(_memoize_cache_dir) || return 1
+    key=$(_memoize_key "$@") || return 1
+    base="${cache}/${key}"
 
-        # The reason for forking these off is the (somewhat odd) case where
-        # stdout and stderr are consumed in synchrony. It might otherwise
-        # block when the reader won't read more from stdout because it expects
-        # something on stderr or vice versa.
-        ( [ -f "${base}.out" ] && cat "${base}.out" & )
-        ( [ -f "${base}.err" ] && cat "${base}.err" 1>&2 & )
-        rc=$(cat "${base}.rc")
-        return $rc
+    if [ -n "$delete" ]; then
+        rm -f "${base}.rc" "${base}.out" "${base}.err"
+    elif _memoize_fresh "$base" "$maxage"; then
+        _memoize_replay "$base"
     else
-        # capture
-        $* \
-             2> >(tee "${base}.err" 1>&2) \
-             1> >(tee "${base}.out")
+        _memoize_capture "$base" "$@"
+    fi
+)
 
-        rc="$?"
-        echo "$rc" > "${base}.rc"
-        return $rc
+_memoize_usage() {
+    echo "usage: memoize [-d] [-t AGE] [--] COMMAND [ARG...]" >&2
+}
+
+# Converts an age like 90s, 5m, 2h or 1d to seconds; a bare number is minutes.
+_memoize_seconds() (
+    n="${1%[smhd]}"
+    unit="${1#"$n"}"
+    case "$n" in
+        '' | *[!0-9]*)
+            echo "memoize: bad age: $1" >&2
+            return 1
+            ;;
+    esac
+    # Leading zeros would make shells read the number as octal.
+    n=${n#"${n%%[!0]*}"}
+    n=${n:-0}
+    case "$unit" in
+        s) echo "$n" ;;
+        '' | m) echo $((n * 60)) ;;
+        h) echo $((n * 3600)) ;;
+        d) echo $((n * 86400)) ;;
+    esac
+)
+
+# Prints the cache directory, creating it if needed.
+_memoize_cache_dir() (
+    dir="${XDG_CACHE_HOME:-$HOME/.cache}/memoize"
+    mkdir -p "$dir" && printf '%s\n' "$dir"
+)
+
+# Succeeds if the entry at $1 exists and, when $2 is set, was captured at
+# most $2 seconds ago.
+_memoize_fresh() (
+    [ -f "$1.rc" ] || return 1
+    [ -n "$2" ] || return 0
+    { read -r _ && read -r captured; } <"$1.rc" || return 1
+    case "$captured" in
+        '' | *[!0-9]*) return 1 ;;
+    esac
+    [ $(($(date +%s) - captured)) -le "$2" ]
+)
+
+_memoize_replay() (
+    read -r rc <"$1.rc" || return 1
+    # stdout and stderr are replayed concurrently so a reader consuming both
+    # in lockstep can't deadlock. The subshell waits for both before we
+    # return, without touching the caller's jobs or printing job notices.
+    (
+        [ ! -f "$1.out" ] || cat "$1.out" &
+        [ ! -f "$1.err" ] || cat "$1.err" >&2
+        wait
+    )
+    return "$rc"
+)
+
+# Runs the command into a scratch directory and only moves the result into
+# the cache if the run was one worth replaying.
+_memoize_capture() (
+    base="$1"
+    shift
+    tmp=$(mktemp -d "${base}.tmp.XXXXXX") || return 1
+    _memoize_tee "$tmp" "$@"
+    rc=''
+    read -r rc 2>/dev/null <"$tmp/rc"
+    if _memoize_cacheable "$rc"; then
+        _memoize_commit "$tmp" "$base"
+    fi
+    rm -rf "$tmp"
+    return "${rc:-1}"
+)
+
+# Runs the command with stdout and stderr each teed into $1, and its exit
+# code and the capture time (epoch seconds) written to $1/rc. Plain pipelines (not >(...)) so both tees have
+# finished when this returns. The nesting keeps each redirection of fd 1 on
+# its own level; zsh's MULTIOS would otherwise send stdout into both.
+_memoize_tee() (
+    tmp="$1"
+    shift
+    {
+        {
+            {
+                "$@" 3>&-
+                printf '%s\n%s\n' "$?" "$(date +%s)" >"$tmp/rc"
+            } 1>&3
+        } 2>&1 | tee "$tmp/err" >&2 3>&-
+    } 3>&1 | tee "$tmp/out"
+)
+
+# Rejects runs that didn't finish (no rc), were killed by a signal (>128), or
+# never started (126: not executable, 127: not found).
+_memoize_cacheable() {
+    case "$1" in
+        '' | 126 | 127) return 1 ;;
+    esac
+    [ "$1" -le 128 ]
+}
+
+# Moves the run in $1 into the cache entry $2. The rc file marks an entry as
+# complete, so it goes first and is replaced last.
+_memoize_commit() {
+    rm -f "$2.rc"
+    mv -f "$1/out" "$2.out" &&
+        mv -f "$1/err" "$2.err" &&
+        mv -f "$1/rc" "$2.rc"
+}
+
+# NUL-separating the arguments keeps `a 'b c'` and `'a b' c` apart, and
+# printf (unlike zsh's echo) leaves backslashes alone.
+_memoize_key() (
+    sum=$(printf '%s\0' "$@" | _memoize_sha1) || return 1
+    printf '%s\n' "${sum%% *}"
+)
+
+# Hashes stdin with whichever sha1 tool this system has; sha1sum is GNU,
+# shasum is what macOS ships.
+_memoize_sha1() {
+    if command -v sha1sum >/dev/null; then
+        sha1sum
+    elif command -v shasum >/dev/null; then
+        shasum -a 1
+    elif command -v openssl >/dev/null; then
+        openssl sha1 -r
+    else
+        echo "memoize: need sha1sum, shasum or openssl" >&2
+        return 1
     fi
 }
 

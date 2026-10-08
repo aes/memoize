@@ -15,19 +15,42 @@ To replay them, just re-run the same command:
 
     memoize bash -c 'sleep 3; echo moo'
 
-To clear the cache, add the `-d` flag before anything else:
+To clear the cache for a command, add the `-d` flag before it:
 
     memoize -d bash -c 'sleep 3; echo moo'
+
+To only replay results younger than some age, use `-t AGE`, where AGE is a
+number with an optional unit `s`, `m`, `h` or `d` (default minutes):
+
+    memoize -t 90s bash -c 'sleep 3; echo moo'
+
+Use `--` to end the options if the command itself starts with `-`.
+
+`memoize.sh` is meant to be sourced from any POSIX shell, which defines
+the `memoize` function. Where sourcing isn't an option (other shells,
+scripts, `xargs`), put the `memoize` command on your `PATH`, e.g. by
+symlinking it into `~/bin`; it can't memoize shell functions or aliases.
+
+Run `./test.sh` to shellcheck and run the tests under bash, zsh, dash and
+busybox sh.
 
 
 ## Technical details
 
-The cache is keyed on the sha1 of echo "$*" of the line, so there's no logic
-to try to understand anything. Shell lexing will ignore whitespace between
-arguments, but that's it.
+The cache is keyed on the sha1 of the arguments, each terminated by a NUL
+byte, so there's no logic to try to understand anything. Whitespace between
+arguments is ignored by the shell, but argument boundaries count: `a 'b c'`
+and `'a b' c` are different keys.
+
+Runs that were killed by a signal (exit code above 128), or where the command
+could not be found or run (126, 127), are not cached.
 
 The results are kept in files named _key_.rc, _key_.out, and _key_.err in
 `$XDG_CACHE_HOME/memoize`, or if `XDG_CACHE_HOME` is not set
-`~/.cache/memoize`.
+`~/.cache/memoize`. The .rc file holds the exit code and, on its second
+line, the capture time in seconds since the epoch, which is what `-t`
+compares against.
 
-It's ok to remove empty files in the cache.
+A run is written to a `_key_.tmp.*` directory first and moved into place
+once it's done, so a half-finished run is never replayed. It's ok to remove
+empty files in the cache, and any leftover `.tmp.*` directories.
